@@ -1,0 +1,42 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "parkcheck-app",
+          "appId": "1:876442856362:android:d46f50e42fe65a267959d3",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "parkcheck-app",
+          "configurations": {
+            "android": "1:876442856362:android:d46f50e42fe65a267959d3",
+            "ios": "1:876442856362:ios:036481d2c8b4c3327959d3",
+            "macos": "1:876442856362:ios:036481d2c8b4c3327959d3",
+            "web": "1:876442856362:web:6f8fc1e64c74da747959d3",
+            "windows": "1:876442856362:web:d51980cdc545a8737959d3"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint"
+      ]
+    }
+  ]
+}
