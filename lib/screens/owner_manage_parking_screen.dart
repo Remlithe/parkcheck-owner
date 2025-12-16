@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import '../models/ParkingAreaModel.dart'; // Upewnij się co do nazwy pliku
+import '../models/parking_area_model.dart'; // Upewnij się co do nazwy pliku
 import 'location_picker_screen.dart'; // Mapa
 
 class OwnerManageParkingScreen extends StatefulWidget {

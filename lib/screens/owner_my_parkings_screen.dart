@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../models/parkingareamodel.dart';
+import '../models/parking_area_model.dart';
 import 'owner_manage_parking_screen.dart'; // <--- Ten plik odpowiada za wygląd "jak w rejestracji"
 
 class OwnerMyParkingsScreen extends StatefulWidget {

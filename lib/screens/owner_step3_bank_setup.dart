@@ -6,7 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart'; // <--- Potrzebne do otwarcia linku
 import '../widgets/registration_layout.dart';
 import '../models/owner_model.dart';
-import '../models/ParkingAreaModel.dart';
+import '../models/parking_area_model.dart';
 
 class OwnerStep3BankSetup extends StatefulWidget {
   final String firstName, lastName, email, phone, password, parkingName, address;

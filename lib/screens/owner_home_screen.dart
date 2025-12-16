@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/parkingareamodel.dart';
+import '../models/parking_area_model.dart';
 import 'owner_parking_details_screen.dart'; // Zaraz stworzymy
 import 'owner_profile_menu.dart';
 
