@@ -1,7 +1,7 @@
 // lib/screens/owner_login_screen.dart
 import 'package:flutter/material.dart';
 import '../services/owner_auth_service.dart';
-import 'owner_step1_personal.dart'; // Żeby móc przejść do rejestracji
+import 'owner_step1_personal.dart';
 
 class OwnerLoginScreen extends StatefulWidget {
   const OwnerLoginScreen({super.key});
@@ -27,23 +27,19 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Logowanie przez nasz serwis (sprawdza czy to właściciel)
       await _authService.signInOwner(
         _emailCtrl.text.trim(),
         _passCtrl.text.trim(),
       );
-      
-      // Nie musimy robić Navigator.push, bo AuthWrapper w main.dart
-      // sam wykryje zmianę stanu i przełączy na AddParkingScreen.
-
+      // AuthWrapper w main.dart obsłuży przekierowanie
     } catch (e) {
       String msg = "Błąd logowania";
       if (e.toString().contains("user-not-found")) {
-        msg = "Nie znaleziono takiego użytkownika.";
+        msg = "Nie znaleziono takiego partnera.";
       } else if (e.toString().contains("wrong-password")) {
         msg = "Błędne hasło.";
       } else if (e.toString().contains("not-owner")) {
-        msg = "To konto nie ma uprawnień Właściciela.";
+        msg = "To konto nie ma uprawnień Partnera.";
       }
 
       if (mounted) {
@@ -63,54 +59,110 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Panel Partnera")),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Center(
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.local_parking, size: 80, color: Colors.blue),
-                const SizedBox(height: 20),
-                const Text(
-                  "Witaj ponownie!",
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 40),
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.black),
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 20),
+                    const Icon(Icons.business_center, size: 80, color: Color(0xFF007AFF)),
+                    const SizedBox(height: 20),
+                    const Text(
+                      "Panel Partnera",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      "Zarządzaj swoimi parkingami",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                    ),
+                    const SizedBox(height: 40),
 
-                TextField(
-                  controller: _emailCtrl,
-                  decoration: const InputDecoration(labelText: "Email"),
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 15),
-                TextField(
-                  controller: _passCtrl,
-                  decoration: const InputDecoration(labelText: "Hasło"),
-                  obscureText: true,
-                ),
-                const SizedBox(height: 30),
+                    _buildInput(_emailCtrl, "Email firmowy", Icons.email),
+                    const SizedBox(height: 16),
+                    _buildInput(_passCtrl, "Hasło", Icons.lock, isObscure: true),
+                    
+                    const SizedBox(height: 30),
 
-                _isLoading
-                    ? const CircularProgressIndicator()
-                    : SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton(
-                          onPressed: _login,
-                          child: const Text("ZALOGUJ SIĘ"),
+                    // Link do rejestracji
+                    TextButton(
+                      onPressed: _goToRegistration,
+                      child: RichText(
+                        text: const TextSpan(
+                          style: TextStyle(color: Colors.grey, fontSize: 14, fontFamily: 'Roboto'),
+                          children: [
+                            TextSpan(text: "Nie masz konta? "),
+                            TextSpan(
+                              text: "Zostań Partnerem", 
+                              style: TextStyle(
+                                color: Color(0xFF007AFF),
+                                fontWeight: FontWeight.bold, 
+                                decoration: TextDecoration.underline
+                              )
+                            ),
+                          ],
                         ),
                       ),
-                
-                const SizedBox(height: 20),
-                TextButton(
-                  onPressed: _goToRegistration,
-                  child: const Text("Nie masz konta? Zostań partnerem"),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
+            
+            // Przycisk Logowania na dole
+            Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _login,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF007AFF),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text("ZALOGUJ SIĘ", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInput(TextEditingController ctrl, String label, IconData icon, {bool isObscure = false}) {
+    return TextField(
+      controller: ctrl,
+      obscureText: isObscure,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        filled: true,
+        fillColor: Colors.grey[50],
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFF007AFF), width: 1.5),
         ),
       ),
     );

@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:url_launcher/url_launcher.dart'; // <--- Potrzebne do otwarcia linku
-import '../widgets/registration_layout.dart';
+import 'package:url_launcher/url_launcher.dart'; 
 import '../models/owner_model.dart';
 import '../models/parking_area_model.dart';
 
@@ -34,38 +33,84 @@ class OwnerStep3BankSetup extends StatefulWidget {
 
 class _OwnerStep3BankSetupState extends State<OwnerStep3BankSetup> {
   bool _isLoading = false;
-  
-  // Czy proces Stripe został rozpoczęty?
   bool _isOnboardingStarted = false;
 
-  Future<void> _startStripeOnboarding() async {
+
+Future<void> _startStripeOnboarding() async {
+    // Zabezpieczenie: sprawdzamy czy linki zostały uzupełnione
+    
+
     setState(() => _isLoading = true);
 
     try {
-      // 1. Rejestracja w Firebase Auth (jeśli jeszcze nie ma konta)
-      UserCredential cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: widget.email,
-        password: widget.password,
-      );
-      final ownerUid = cred.user!.uid;
+      String ownerUid;
+      
+      // 1. INTELIGENTNA OBSŁUGA AUTH (Logowanie LUB Rejestracja)
+      User? currentUser = FirebaseAuth.instance.currentUser;
+      
+      if (currentUser != null) {
+        // A. Użytkownik już jest zalogowany
+        ownerUid = currentUser.uid;
+      } else {
+        try {
+          // B. Próbujemy się ZALOGOWAĆ
+          UserCredential cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
+            email: widget.email,
+            password: widget.password,
+          );
+          ownerUid = cred.user!.uid;
+        } on FirebaseAuthException catch (authError) {
+          // C. Jeśli logowanie nie wyszło (bo nie ma usera), to REJESTRUJEMY
+          if (authError.code == 'user-not-found' || 
+              authError.code == 'invalid-credential' || 
+              authError.code == 'wrong-password') {
+            
+            UserCredential cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+              email: widget.email,
+              password: widget.password,
+            );
+            ownerUid = cred.user!.uid;
+          } else {
+            // Inny błąd (np. brak sieci) - przerywamy
+            rethrow;
+          }
+        }
+      }
+      
+      if (!mounted) return;
 
-      // 2. Utworzenie konta Stripe (Express)
-      final HttpsCallable createAccount = FirebaseFunctions.instance.httpsCallable('createConnectedAccount');
+      // 2. Wywołanie funkcji createConnectedAccount (POPRAWKA: przekazujemy String)
+      // Używamy httpsCallableFromUrl bo masz funkcje Gen 2
+      final HttpsCallable createAccount = FirebaseFunctions.instance.httpsCallable(
+        'createConnectedAccount' 
+      );
+      
       final accountResult = await createAccount.call({'email': widget.email});
+      
+      if (accountResult.data == null) throw "Brak danych z funkcji createConnectedAccount";
       final stripeAccountId = accountResult.data['stripeAccountId'];
 
-      // 3. Wygenerowanie Linku do Onboardingu
-      final HttpsCallable createLink = FirebaseFunctions.instance.httpsCallable('createAccountLink');
+      // 3. Wywołanie funkcji createAccountLink (POPRAWKA: przekazujemy String)
+      final HttpsCallable createLink = FirebaseFunctions.instance.httpsCallable(
+        'createAccountLink'
+      );
+
       final linkResult = await createLink.call({'accountId': stripeAccountId});
+      
+      if (linkResult.data == null) throw "Brak danych z funkcji createAccountLink";
       final String onboardingUrl = linkResult.data['url'];
 
-      // 4. Zapisanie danych w Firestore (zanim wyjdziemy do przeglądarki)
+      // 4. Zapisanie danych w Firestore
       await _saveDataToFirestore(ownerUid, stripeAccountId);
 
-      // 5. Otwarcie przeglądarki z formularzem Stripe
+      if (!mounted) return;
+
+      // 5. Otwarcie przeglądarki
       final Uri url = Uri.parse(onboardingUrl);
       if (await canLaunchUrl(url)) {
         await launchUrl(url, mode: LaunchMode.externalApplication);
+        
+        if (!mounted) return;
         
         setState(() {
           _isOnboardingStarted = true;
@@ -76,15 +121,13 @@ class _OwnerStep3BankSetupState extends State<OwnerStep3BankSetup> {
       }
 
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Błąd: $e")));
-        setState(() => _isLoading = false);
-      }
+      if (!mounted) return;
+      debugPrint("Błąd: $e");
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Błąd: $e")));
+      setState(() => _isLoading = false);
     }
   }
-
   Future<void> _saveDataToFirestore(String uid, String stripeId) async {
-      // Zapis Właściciela
       final newOwner = OwnerModel(
         uid: uid,
         email: widget.email,
@@ -95,7 +138,6 @@ class _OwnerStep3BankSetupState extends State<OwnerStep3BankSetup> {
       );
       await FirebaseFirestore.instance.collection('owners').doc(uid).set(newOwner.toFirestore());
 
-      // Zapis Parkingu
       final newSpot = ParkingAreaModel(
         id: "",
         ownerUid: uid,
@@ -111,75 +153,104 @@ class _OwnerStep3BankSetupState extends State<OwnerStep3BankSetup> {
   }
 
   void _finish() async {
-    // W normalnej aplikacji tutaj sprawdzilibyśmy w Stripe API, czy onboarding się udał.
-    // W MVP zakładamy, że user wrócił z przeglądarki i kliknął "Gotowe".
-    await FirebaseAuth.instance.signOut();
-    if(mounted) {
-       Navigator.of(context).popUntil((route) => route.isFirst);
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Rejestracja zakończona! Zaloguj się.")));
-    }
+    if (!mounted) return;
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Rejestracja zakończona! Zaloguj się.")));
   }
 
   @override
   Widget build(BuildContext context) {
-    return RegistrationLayout(
-      currentStep: 3,
-      totalSteps: 3,
-      title: "Wypłaty",
-      child: Center(
+    return Scaffold(
+      backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: true, 
+      appBar: AppBar(
+        title: const Text("Wypłaty", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
+        centerTitle: true,
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.black),
+      ),
+      body: SafeArea(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.account_balance_wallet, size: 80, color: Colors.blue),
-            const SizedBox(height: 20),
+            // GÓRA: Pasek postępu
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 10),
+                  LinearProgressIndicator(
+                    value: 1.0,
+                    backgroundColor: Colors.grey[200],
+                    color: const Color(0xFF007AFF),
+                    minHeight: 6,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text("Krok 3 z 3", textAlign: TextAlign.right, style: TextStyle(color: Colors.grey, fontSize: 12)),
+                ],
+              ),
+            ),
             
-            const Text(
-              "Skonfiguruj wypłaty",
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              "Zostaniesz przeniesiony na bezpieczną stronę Stripe, aby podać dane bankowe i zweryfikować tożsamość.",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 40),
-
-            if (_isLoading)
-              const CircularProgressIndicator()
-            else if (!_isOnboardingStarted)
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton.icon(
-                  onPressed: _startStripeOnboarding,
-                  icon: const Icon(Icons.open_in_new),
-                  label: const Text("ROZPOCZNIJ KONFIGURACJĘ"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[800], 
-                    foregroundColor: Colors.white
+            // ŚRODEK: Treść
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.account_balance_wallet, size: 80, color: Color(0xFF007AFF)),
+                      const SizedBox(height: 20),
+                      
+                      const Text(
+                        "Skonfiguruj wypłaty",
+                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        "Zostaniesz przeniesiony na bezpieczną stronę Stripe, aby podać dane bankowe i zweryfikować tożsamość.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey, fontSize: 16),
+                      ),
+                      
+                      const SizedBox(height: 20),
+                      if (_isLoading) const CircularProgressIndicator(),
+                    ],
                   ),
                 ),
-              )
-            else
-              Column(
-                children: [
-                  const Text("Formularz otwarty w przeglądarce...", style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
+              ),
+            ),
+
+            // DÓŁ: Guzik
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+              child: SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: _isOnboardingStarted
+                  ? ElevatedButton(
                       onPressed: _finish,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green, 
-                        foregroundColor: Colors.white
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      child: const Text("GOTOWE - ZAKOŃCZ REJESTRACJĘ"),
+                      child: const Text("GOTOWE - ZAKOŃCZ REJESTRACJĘ", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    )
+                  : ElevatedButton.icon(
+                      onPressed: _isLoading ? null : _startStripeOnboarding,
+                      icon: const Icon(Icons.open_in_new, color: Colors.white),
+                      label: const Text("ROZPOCZNIJ KONFIGURACJĘ", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF007AFF),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        disabledBackgroundColor: Colors.grey,
+                      ),
                     ),
-                  ),
-                ],
-              )
+              ),
+            ),
           ],
         ),
       ),

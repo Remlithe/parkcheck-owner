@@ -1,9 +1,8 @@
 // lib/screens/owner_step2_parking.dart
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import '../widgets/registration_layout.dart';
-import 'owner_step3_bank_setup.dart'; // Przejście do KROKU 3 (Płatności)
-import 'location_picker_screen.dart'; // Narzędzie Mapy
+import 'owner_step3_bank_setup.dart';
+import 'location_picker_screen.dart';
 
 class OwnerStep2Parking extends StatefulWidget {
   final String firstName, lastName, email, phone, password;
@@ -27,9 +26,8 @@ class _OwnerStep2ParkingState extends State<OwnerStep2Parking> {
   final _capacityCtrl = TextEditingController();
   
   LatLng? _pickedLocation;
-  String _pickedAddress = "Nie wybrano lokalizacji";
+  String _pickedAddress = "Kliknij, aby wybrać z mapy";
 
-  // Otwiera mapę jako narzędzie i czeka na powrót
   void _openMapPicker() async {
     final result = await Navigator.push(
       context,
@@ -50,7 +48,6 @@ class _OwnerStep2ParkingState extends State<OwnerStep2Parking> {
       return;
     }
 
-    // Przechodzimy do Kroku 3 (Płatności), przekazując wszystkie zebrane dane
     Navigator.of(context).push(MaterialPageRoute(
       builder: (context) => OwnerStep3BankSetup(
         firstName: widget.firstName,
@@ -61,70 +58,154 @@ class _OwnerStep2ParkingState extends State<OwnerStep2Parking> {
         parkingName: _parkingNameCtrl.text.trim(),
         pricePerHour: double.tryParse(_priceCtrl.text) ?? 0.0,
         capacity: int.tryParse(_capacityCtrl.text) ?? 0,
-        location: _pickedLocation!, // <--- Dane z mapy
-        address: _pickedAddress,      // <--- Dane z mapy
+        location: _pickedLocation!,
+        address: _pickedAddress,
       ),
     ));
   }
 
   @override
   Widget build(BuildContext context) {
-    return RegistrationLayout(
-      currentStep: 2,
-      title: "Dane Parkingu (2/3)",
-      child: Column(
-        children: [
-          TextField(controller: _parkingNameCtrl, decoration: const InputDecoration(labelText: "Nazwa Parkingu")),
-          const SizedBox(height: 15),
-          Row(
-            children: [
-              Expanded(child: TextField(controller: _priceCtrl, decoration: const InputDecoration(labelText: "Cena (zł/h)"), keyboardType: TextInputType.number)),
-              const SizedBox(width: 15),
-              Expanded(child: TextField(controller: _capacityCtrl, decoration: const InputDecoration(labelText: "Ilość miejsc"), keyboardType: TextInputType.number)),
-            ],
-          ),
-          const SizedBox(height: 30),
-          
-          // LOKALIZACJA (TERAZ W KROKU 2)
-          const Text("Wskaż lokalizację wjazdu", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey[100], 
-              borderRadius: BorderRadius.circular(8), 
-              border: _pickedLocation == null ? Border.all(color: Colors.red) : null
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: const Text("Dodaj Parking", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
+        centerTitle: true,
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.black),
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // --- PASEK POSTĘPU (IDENTYCZNY JAK W STEP 1) ---
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 10),
+                  LinearProgressIndicator(
+                    value: 0.66, // Krok 2
+                    backgroundColor: Colors.grey[200],
+                    color: const Color(0xFF007AFF),
+                    minHeight: 6,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text("Krok 2 z 3", textAlign: TextAlign.right, style: TextStyle(color: Colors.grey, fontSize: 12)),
+                ],
+              ),
             ),
-            child: Row(
-              children: [
-                Icon(_pickedLocation != null ? Icons.check : Icons.location_on, color: _pickedLocation != null ? Colors.green : Colors.blue),
-                const SizedBox(width: 10),
-                Expanded(child: Text(_pickedAddress)),
-              ],
+
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text("Twój pierwszy parking", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 10),
+                    const Text("Zdefiniuj parametry swojego parkingu. Będziesz mógł je później edytować.", style: TextStyle(color: Colors.grey)),
+                    const SizedBox(height: 30),
+
+                    _buildInput(_parkingNameCtrl, "Nazwa parkingu", Icons.business),
+                    const SizedBox(height: 16),
+                    
+                    Row(
+                      children: [
+                        Expanded(child: _buildInput(_priceCtrl, "Cena (zł/h)", Icons.attach_money, type: TextInputType.number)),
+                        const SizedBox(width: 16),
+                        Expanded(child: _buildInput(_capacityCtrl, "Liczba miejsc", Icons.local_parking, type: TextInputType.number)),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    
+                    // SEKCJA MAPY
+                    const Text("LOKALIZACJA WJAZDU", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+                    const SizedBox(height: 8),
+                    
+                    InkWell(
+                      onTap: _openMapPicker,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[50], 
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _pickedLocation != null ? Icons.check_circle : Icons.map, 
+                              color: _pickedLocation != null ? Colors.green : const Color(0xFF007AFF)
+                            ),
+                            const SizedBox(width: 15),
+                            Expanded(
+                              child: Text(
+                                _pickedAddress, 
+                                style: TextStyle(
+                                  color: _pickedLocation != null ? Colors.black : Colors.grey,
+                                  fontWeight: _pickedLocation != null ? FontWeight.bold : FontWeight.normal
+                                )
+                              ),
+                            ),
+                            const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_pickedLocation == null)
+                       const Padding(
+                         padding: EdgeInsets.only(top: 8.0),
+                         child: Text("Wymagane wybranie lokalizacji na mapie", style: TextStyle(color: Colors.red, fontSize: 12)),
+                       ),
+                  ],
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _openMapPicker, 
-              icon: const Icon(Icons.map),
-              label: const Text("OTWÓRZ MAPĘ I WSKAŻ")
+
+            Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton(
+                  onPressed: _goToNextStep,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF007AFF),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text("DALEJ", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                ),
+              ),
             ),
-          ),
-          
-          const Spacer(),
-          
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton(
-              onPressed: _goToNextStep,
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
-              child: const Text("DALEJ (KROK 3)"),
-            ),
-          ),
-        ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Helper Input (Wzorowany na Step 1)
+  Widget _buildInput(TextEditingController ctrl, String label, IconData icon, {TextInputType? type}) {
+    return TextField(
+      controller: ctrl,
+      keyboardType: type,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        filled: true,
+        fillColor: Colors.grey[50],
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFF007AFF), width: 1.5),
+        ),
       ),
     );
   }
