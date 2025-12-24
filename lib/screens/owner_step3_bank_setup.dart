@@ -35,72 +35,77 @@ class _OwnerStep3BankSetupState extends State<OwnerStep3BankSetup> {
   bool _isLoading = false;
   bool _isOnboardingStarted = false;
 
+  // --- WAŻNE: Skopiuj linki z Firebase Console -> Functions i wklej poniżej ---
+  // Musisz to zrobić, bo masz funkcje Gen 2.
+  final String _createAccountUrl = "https://createconnectedaccount-scpllyrlna-uc.a.run.app";
+  final String _createLinkUrl = "https://createaccountlink-scpllyrlna-uc.a.run.app";
 
-Future<void> _startStripeOnboarding() async {
-    // Zabezpieczenie: sprawdzamy czy linki zostały uzupełnione
-    
+  Future<void> _startStripeOnboarding() async {
+    if (_createAccountUrl.contains("WKLEJ") || _createLinkUrl.contains("WKLEJ")) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("BŁĄD: Uzupełnij linki URL w kodzie!"))
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
 
     try {
       String ownerUid;
       
-      // 1. INTELIGENTNA OBSŁUGA AUTH (Logowanie LUB Rejestracja)
+      // 1. Logika Auth (Inteligentna: Logowanie LUB Rejestracja w razie błędu)
       User? currentUser = FirebaseAuth.instance.currentUser;
-      
       if (currentUser != null) {
-        // A. Użytkownik już jest zalogowany
         ownerUid = currentUser.uid;
       } else {
         try {
-          // B. Próbujemy się ZALOGOWAĆ
           UserCredential cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
             email: widget.email,
             password: widget.password,
           );
           ownerUid = cred.user!.uid;
-        } on FirebaseAuthException catch (authError) {
-          // C. Jeśli logowanie nie wyszło (bo nie ma usera), to REJESTRUJEMY
-          if (authError.code == 'user-not-found' || 
-              authError.code == 'invalid-credential' || 
-              authError.code == 'wrong-password') {
-            
-            UserCredential cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-              email: widget.email,
-              password: widget.password,
-            );
-            ownerUid = cred.user!.uid;
-          } else {
-            // Inny błąd (np. brak sieci) - przerywamy
-            rethrow;
-          }
+        } on FirebaseAuthException {
+          // Jeśli nie można się zalogować (np. brak usera), tworzymy go
+          UserCredential cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+            email: widget.email,
+            password: widget.password,
+          );
+          ownerUid = cred.user!.uid;
         }
       }
       
       if (!mounted) return;
 
-      // 2. Wywołanie funkcji createConnectedAccount (POPRAWKA: przekazujemy String)
-      // Używamy httpsCallableFromUrl bo masz funkcje Gen 2
-      final HttpsCallable createAccount = FirebaseFunctions.instance.httpsCallable(
-        'createConnectedAccount' 
+      // 2. Utworzenie konta Stripe (NAPRAWIONE: używa adresu URL jako String)
+      final HttpsCallable createAccount = FirebaseFunctions.instance.httpsCallableFromUrl(
+        _createAccountUrl, 
       );
       
       final accountResult = await createAccount.call({'email': widget.email});
       
-      if (accountResult.data == null) throw "Brak danych z funkcji createConnectedAccount";
-      final stripeAccountId = accountResult.data['stripeAccountId'];
+      if (accountResult.data == null) throw "Funkcja nie zwróciła danych";
+      
+      // Bezpieczne pobranie ID (niezależnie czy zwróci mapę czy bezpośrednio)
+      final stripeAccountId = (accountResult.data is Map) 
+          ? accountResult.data['stripeAccountId'] 
+          : accountResult.data;
 
-      // 3. Wywołanie funkcji createAccountLink (POPRAWKA: przekazujemy String)
-      final HttpsCallable createLink = FirebaseFunctions.instance.httpsCallable(
-        'createAccountLink'
+      if (stripeAccountId == null) throw "Brak stripeAccountId";
+
+      // 3. Wygenerowanie Linku (NAPRAWIONE: używa adresu URL jako String)
+      final HttpsCallable createLink = FirebaseFunctions.instance.httpsCallableFromUrl(
+        _createLinkUrl,
       );
 
       final linkResult = await createLink.call({'accountId': stripeAccountId});
       
-      if (linkResult.data == null) throw "Brak danych z funkcji createAccountLink";
-      final String onboardingUrl = linkResult.data['url'];
+      if (linkResult.data == null) throw "Funkcja linku nie zwróciła danych";
+      
+      final String onboardingUrl = (linkResult.data is Map)
+          ? linkResult.data['url']
+          : linkResult.data;
 
-      // 4. Zapisanie danych w Firestore
+      // 4. Zapis do Firestore
       await _saveDataToFirestore(ownerUid, stripeAccountId);
 
       if (!mounted) return;
@@ -111,7 +116,6 @@ Future<void> _startStripeOnboarding() async {
         await launchUrl(url, mode: LaunchMode.externalApplication);
         
         if (!mounted) return;
-        
         setState(() {
           _isOnboardingStarted = true;
           _isLoading = false;
@@ -127,6 +131,7 @@ Future<void> _startStripeOnboarding() async {
       setState(() => _isLoading = false);
     }
   }
+
   Future<void> _saveDataToFirestore(String uid, String stripeId) async {
       final newOwner = OwnerModel(
         uid: uid,
@@ -173,7 +178,7 @@ Future<void> _startStripeOnboarding() async {
       body: SafeArea(
         child: Column(
           children: [
-            // GÓRA: Pasek postępu
+            // Pasek postępu
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Column(
@@ -193,7 +198,7 @@ Future<void> _startStripeOnboarding() async {
               ),
             ),
             
-            // ŚRODEK: Treść
+            // Treść
             Expanded(
               child: Center(
                 child: Padding(
@@ -224,7 +229,7 @@ Future<void> _startStripeOnboarding() async {
               ),
             ),
 
-            // DÓŁ: Guzik
+            // Guzik
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
               child: SizedBox(

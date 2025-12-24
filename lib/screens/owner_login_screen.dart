@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import '../services/owner_auth_service.dart';
 import 'owner_step1_personal.dart';
+import 'owner_main_screen.dart'; // <--- 1. DODANO IMPORT
 
 class OwnerLoginScreen extends StatefulWidget {
   const OwnerLoginScreen({super.key});
@@ -27,11 +28,20 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
     setState(() => _isLoading = true);
 
     try {
+      // Logowanie w Firebase
       await _authService.signInOwner(
         _emailCtrl.text.trim(),
         _passCtrl.text.trim(),
       );
-      // AuthWrapper w main.dart obsłuży przekierowanie
+
+      // <--- 2. ZMIANA: Ręczne przekierowanie do EKRANU Z NAVBAREM
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const OwnerMainScreen()),
+          (route) => false, // Usuwa historię (nie można cofnąć do logowania)
+        );
+      }
+      
     } catch (e) {
       String msg = "Błąd logowania";
       if (e.toString().contains("user-not-found")) {

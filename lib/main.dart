@@ -5,6 +5,7 @@ import 'firebase_options.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'screens/owner_login_screen.dart';
 import 'screens/owner_home_screen.dart';
+import 'screens/owner_main_screen.dart';
 void main() async {
   // 1. Obowiązkowa inicjalizacja silnika przed Firebase
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,10 +31,7 @@ void main() async {
     print("Szczegóły błędu: $e");
   }
 
-  // 2. Start Firebase z konfiguracją
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  
 
   runApp(const ParkCheckOwnerApp());
 }
@@ -81,7 +79,7 @@ class OwnerAuthWrapper extends StatelessWidget {
         }
 
         if (snapshot.hasData) {
-          return const OwnerHomeScreen(); // Zalogowany -> Panel
+          return const OwnerMainScreen(); // Zalogowany -> Panel
         }
 
         // 3. ZMIANA TUTAJ: Niezalogowany -> Ekran Logowania

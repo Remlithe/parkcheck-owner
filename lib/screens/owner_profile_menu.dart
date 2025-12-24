@@ -1,55 +1,122 @@
-// lib/screens/owner_profile_menu.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'owner_edit_subscreens.dart'; // Import ekranów edycji
-import 'owner_my_parkings_screen.dart'; // Import listy parkingów
+import 'owner_login_screen.dart'; // <--- ZMIANA: Importujemy logowanie partnera
+import 'owner_edit_subscreens.dart';
+import 'owner_my_parkings_screen.dart';
 
-class OwnerProfileMenu extends StatelessWidget {
-  const OwnerProfileMenu({super.key});
+class OwnerProfileScreen extends StatelessWidget {
+  const OwnerProfileScreen({super.key});
 
-  void _nav(BuildContext context, Widget page) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => page));
-  }
-
-  void _logout(BuildContext context) async {
+  Future<void> _signOut(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    if (context.mounted) {
+      // <--- ZMIANA: Przekierowanie do OwnerLoginScreen
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const OwnerLoginScreen()),
+        (route) => false,
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(title: const Text("Ustawienia Profilu", style: TextStyle(color: Colors.black)), backgroundColor: Colors.white, elevation: 0, iconTheme: const IconThemeData(color: Colors.black)),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          _menuItem(Icons.person, "Dane osobowe", () => _nav(context, const OwnerPersonalDataScreen())),
-          // NOWE:
-          _menuItem(Icons.account_balance, "Dane konta bankowego", () => _nav(context, const OwnerBankDataScreen())),
-          _menuItem(Icons.local_parking, "Moje parkingi", () => _nav(context, const OwnerMyParkingsScreen())),
-          //
-          _menuItem(Icons.mail, "Zgłoś problem", () => _nav(context, const OwnerReportScreen())),
-          
-          const SizedBox(height: 30),
-          OutlinedButton(
-            onPressed: () => _logout(context),
-            style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
-            child: const Text("WYLOGUJ SIĘ"),
-          )
-        ],
+      backgroundColor: const Color(0xFFF2F2F7),
+      appBar: AppBar(
+        title: const Text("Twoje Konto", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        automaticallyImplyLeading: false,
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(left: 16, right: 16, top: 20),
+                child: Column(
+                  children: [
+                    _buildMenuOption(
+                      icon: Icons.person,
+                      title: "Dane osobowe",
+                      subtitle: "Imię, nazwisko, telefon, email",
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OwnerPersonalDataScreen())),
+                    ),
+
+                    _buildMenuOption(
+                      icon: Icons.account_balance,
+                      title: "Dane bankowe",
+                      subtitle: "Konto Stripe i wypłaty",
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OwnerBankDataScreen())),
+                    ),
+
+                    _buildMenuOption(
+                      icon: Icons.local_parking,
+                      title: "Moje Parkingi",
+                      subtitle: "Zarządzaj i dodawaj nowe",
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OwnerMyParkingsScreen())),
+                    ),
+
+                    _buildMenuOption(
+                      icon: Icons.report_problem,
+                      title: "Zgłoś problem",
+                      subtitle: "Napisz do wsparcia",
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OwnerReportScreen())),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Przycisk Wyloguj
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16), 
+              child: SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    backgroundColor: Color(0xFF007AFF),
+                  ),
+                  onPressed: () => _signOut(context),
+                  icon: const Icon(Icons.logout),
+                  label: const Text("Wyloguj się", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _menuItem(IconData icon, String title, VoidCallback onTap) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
+  Widget _buildMenuOption({
+    required IconData icon, 
+    required String title, 
+    required String subtitle, 
+    required VoidCallback onTap
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 5, offset: const Offset(0, 2))],
+      ),
       child: ListTile(
-        leading: Icon(icon, color: Colors.blue),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         onTap: onTap,
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(color: const Color(0xFFF2F2F7), borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, color: const Color(0xFF007AFF)),
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
       ),
     );
   }

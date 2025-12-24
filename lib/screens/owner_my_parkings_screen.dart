@@ -102,8 +102,8 @@ class _OwnerMyParkingsScreenState extends State<OwnerMyParkingsScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addNewParking,
         backgroundColor: Colors.blue,
-        icon: const Icon(Icons.add),
-        label: const Text("DODAJ PARKING"),
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text("DODAJ PARKING", style: TextStyle(color: Colors.white)),
       ),
     );
   }

@@ -82,8 +82,8 @@ exports.createAccountLink = onCall(
           account: accountId,
           // Używamy deep linków, aby wrócić do aplikacji mobilnej.
           // Aplikacja musi być skonfigurowana, aby obsługiwać ten schemat URL.
-          refresh_url: "parkcheckowner://stripe/refresh",
-          return_url: "parkcheckowner://stripe/return",
+          refresh_url: "https://emotional-appreciatorily-bennett.ngrok-free.dev/parkcheck-app/us-central1/stripeRefresh",
+          return_url: "https://emotional-appreciatorily-bennett.ngrok-free.dev/parkcheck-app/us-central1/stripeReturn",
           type: "account_onboarding",
         });
         return {url: accountLink.url};
@@ -120,3 +120,18 @@ exports.createLoginLink = onCall(
       }
     },
 );
+const {onRequest} = require("firebase-functions/v2/https");
+// lub jeśli używasz starszej wersji (v1):
+// const functions = require("firebase-functions");
+
+// 1. Funkcja obsługująca powrót (Return URL)
+exports.stripeReturn = onRequest((req, res) => {
+  // Przekierowanie do Twojej aplikacji mobilnej
+  res.redirect("parkcheckowner://stripe/return");
+});
+
+// 2. Funkcja obsługująca odświeżenie (Refresh URL)
+exports.stripeRefresh = onRequest((req, res) => {
+  // Przekierowanie do Twojej aplikacji mobilnej
+  res.redirect("parkcheckowner://stripe/refresh");
+});
