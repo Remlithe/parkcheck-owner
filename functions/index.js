@@ -135,3 +135,34 @@ exports.stripeRefresh = onRequest((req, res) => {
   // Przekierowanie do Twojej aplikacji mobilnej
   res.redirect("parkcheckowner://stripe/refresh");
 });
+
+// --- POPRAWIONA FUNKCJA ---
+exports.checkStripeAccountStatus = onCall(
+    {secrets: [stripeKey]}, // 1. Dodajemy dostęp do klucza
+    async (request) => {
+    // 2. Inicjalizujemy Stripe (tego brakowało!)
+      const stripe = require("stripe")(stripeKey.value());
+
+      if (!request.auth) {
+        throw new HttpsError("unauthenticated", "Musi być zalogowany.");
+      }
+
+      const accountId = request.data.accountId;
+      if (!accountId) {
+        throw new HttpsError("invalid-argument", "Brak accountId.");
+      }
+
+      try {
+        const account = await stripe.accounts.retrieve(accountId);
+
+        return {
+          detailsSubmitted: account.details_submitted,
+          chargesEnabled: account.charges_enabled,
+          payoutsEnabled: account.payouts_enabled,
+        };
+      } catch (error) {
+        console.error("Stripe error:", error);
+        throw new HttpsError("internal", "Błąd sprawdzania statusu Stripe.");
+      }
+    },
+);

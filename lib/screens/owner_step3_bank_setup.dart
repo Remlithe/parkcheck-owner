@@ -31,29 +31,46 @@ class OwnerStep3BankSetup extends StatefulWidget {
   State<OwnerStep3BankSetup> createState() => _OwnerStep3BankSetupState();
 }
 
-class _OwnerStep3BankSetupState extends State<OwnerStep3BankSetup> {
+class _OwnerStep3BankSetupState extends State<OwnerStep3BankSetup> with WidgetsBindingObserver {
   bool _isLoading = false;
   bool _isOnboardingStarted = false;
+  String? _createdOwnerUid;
+  String? _tempStripeAccountId; // Pamięć ulotna (nie zapisujemy w bazie dopóki nie ma sukcesu)
 
-  // --- WAŻNE: Skopiuj linki z Firebase Console -> Functions i wklej poniżej ---
-  // Musisz to zrobić, bo masz funkcje Gen 2.
+  // Linki Cloud Functions
   final String _createAccountUrl = "https://createconnectedaccount-scpllyrlna-uc.a.run.app";
   final String _createLinkUrl = "https://createaccountlink-scpllyrlna-uc.a.run.app";
+  final String _checkStatusUrl = "https://checkstripeaccountstatus-scpllyrlna-uc.a.run.app"; 
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Automatyczne sprawdzenie przy powrocie do aplikacji
+      if (_isOnboardingStarted && !_isLoading) {
+        _verifyStripeStatusAndFinish(silent: false); 
+      }
+    }
+  }
 
   Future<void> _startStripeOnboarding() async {
-    if (_createAccountUrl.contains("WKLEJ") || _createLinkUrl.contains("WKLEJ")) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("BŁĄD: Uzupełnij linki URL w kodzie!"))
-      );
-      return;
-    }
-
     setState(() => _isLoading = true);
 
     try {
       String ownerUid;
       
-      // 1. Logika Auth (Inteligentna: Logowanie LUB Rejestracja w razie błędu)
+      // 1. Logika Auth
       User? currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
         ownerUid = currentUser.uid;
@@ -65,7 +82,6 @@ class _OwnerStep3BankSetupState extends State<OwnerStep3BankSetup> {
           );
           ownerUid = cred.user!.uid;
         } on FirebaseAuthException {
-          // Jeśli nie można się zalogować (np. brak usera), tworzymy go
           UserCredential cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
             email: widget.email,
             password: widget.password,
@@ -73,53 +89,40 @@ class _OwnerStep3BankSetupState extends State<OwnerStep3BankSetup> {
           ownerUid = cred.user!.uid;
         }
       }
+
+      _createdOwnerUid = ownerUid; 
       
       if (!mounted) return;
 
-      // 2. Utworzenie konta Stripe (NAPRAWIONE: używa adresu URL jako String)
-      final HttpsCallable createAccount = FirebaseFunctions.instance.httpsCallableFromUrl(
-        _createAccountUrl, 
-      );
-      
+      // 2. Utworzenie konta Stripe (lub pobranie istniejącego w przyszłości)
+      final HttpsCallable createAccount = FirebaseFunctions.instance.httpsCallableFromUrl(_createAccountUrl);
       final accountResult = await createAccount.call({'email': widget.email});
       
-      if (accountResult.data == null) throw "Funkcja nie zwróciła danych";
-      
-      // Bezpieczne pobranie ID (niezależnie czy zwróci mapę czy bezpośrednio)
       final stripeAccountId = (accountResult.data is Map) 
           ? accountResult.data['stripeAccountId'] 
           : accountResult.data;
 
       if (stripeAccountId == null) throw "Brak stripeAccountId";
 
-      // 3. Wygenerowanie Linku (NAPRAWIONE: używa adresu URL jako String)
-      final HttpsCallable createLink = FirebaseFunctions.instance.httpsCallableFromUrl(
-        _createLinkUrl,
-      );
+      _tempStripeAccountId = stripeAccountId; // Zapisujemy w RAM
 
+      // 3. Link Onboarding
+      final HttpsCallable createLink = FirebaseFunctions.instance.httpsCallableFromUrl(_createLinkUrl);
       final linkResult = await createLink.call({'accountId': stripeAccountId});
-      
-      if (linkResult.data == null) throw "Funkcja linku nie zwróciła danych";
       
       final String onboardingUrl = (linkResult.data is Map)
           ? linkResult.data['url']
           : linkResult.data;
 
-      // 4. Zapis do Firestore
-      await _saveDataToFirestore(ownerUid, stripeAccountId);
-
       if (!mounted) return;
 
-      // 5. Otwarcie przeglądarki
       final Uri url = Uri.parse(onboardingUrl);
       if (await canLaunchUrl(url)) {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-        
-        if (!mounted) return;
         setState(() {
           _isOnboardingStarted = true;
-          _isLoading = false;
+          _isLoading = false; 
         });
+        await launchUrl(url, mode: LaunchMode.externalApplication);
       } else {
         throw 'Nie można otworzyć linku Stripe';
       }
@@ -132,20 +135,72 @@ class _OwnerStep3BankSetupState extends State<OwnerStep3BankSetup> {
     }
   }
 
-  Future<void> _saveDataToFirestore(String uid, String stripeId) async {
+  // Funkcja Weryfikująca (Sędzia)
+  Future<void> _verifyStripeStatusAndFinish({bool silent = false}) async {
+    if (_createdOwnerUid == null || _tempStripeAccountId == null) return;
+
+    setState(() => _isLoading = true);
+    
+    try {
+      final HttpsCallable checkStatus = FirebaseFunctions.instance.httpsCallableFromUrl(_checkStatusUrl);
+      final result = await checkStatus.call({'accountId': _tempStripeAccountId});
+      
+      final data = result.data as Map<dynamic, dynamic>;
+      final bool isDetailsSubmitted = data['detailsSubmitted'] ?? false;
+      // Możesz też sprawdzać data['chargesEnabled'] jeśli chcesz być bardziej restrykcyjny
+      
+      if (isDetailsSubmitted) {
+        // --- SUKCES! ---
+        // Tylko tutaj mamy prawo zapisać dane do bazy.
+        await _createAccountInDatabase(); 
+      } else {
+        // --- PORAŻKA ---
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        
+        if (!silent) {
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text("Konfiguracja nieukończona"),
+              content: const Text("Stripe informuje, że proces nie został zakończony.\nMusisz wypełnić wszystkie dane w formularzu bankowym."),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Rozumiem")),
+              ],
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("Błąd weryfikacji: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Błąd weryfikacji: $e")));
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  // Fizyczny zapis do bazy (uruchamiany tylko przez weryfikator)
+  Future<void> _createAccountInDatabase() async {
+    try {
+      // 1. Zapisz Właściciela
       final newOwner = OwnerModel(
-        uid: uid,
+        uid: _createdOwnerUid!,
         email: widget.email,
         firstName: widget.firstName,
         lastName: widget.lastName,
         phoneNumber: widget.phone,
-        stripeAccountId: stripeId,
+        stripeAccountId: _tempStripeAccountId!,
       );
-      await FirebaseFirestore.instance.collection('owners').doc(uid).set(newOwner.toFirestore());
+      await FirebaseFirestore.instance.collection('owners').doc(_createdOwnerUid!).set(
+        newOwner.toFirestore(), 
+        SetOptions(merge: true)
+      );
 
+      // 2. Zapisz Parking
       final newSpot = ParkingAreaModel(
-        id: "",
-        ownerUid: uid,
+        id: "", 
+        ownerUid: _createdOwnerUid!,
         name: widget.parkingName,
         address: widget.address,
         location: widget.location,
@@ -154,13 +209,26 @@ class _OwnerStep3BankSetupState extends State<OwnerStep3BankSetup> {
         occupiedSpots: 0,
         features: ['Ochrona'],
       );
+      
       await FirebaseFirestore.instance.collection('parking_spots').add(newSpot.toFirestore());
-  }
 
-  void _finish() async {
-    if (!mounted) return;
-    Navigator.of(context).popUntil((route) => route.isFirst);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Rejestracja zakończona! Zaloguj się.")));
+      if (!mounted) return;
+
+      // Wyjście
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Weryfikacja pomyślna! Konto utworzone."),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 4),
+        )
+      );
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Błąd zapisu danych: $e")));
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -178,7 +246,6 @@ class _OwnerStep3BankSetupState extends State<OwnerStep3BankSetup> {
       body: SafeArea(
         child: Column(
           children: [
-            // Pasek postępu
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Column(
@@ -198,7 +265,6 @@ class _OwnerStep3BankSetupState extends State<OwnerStep3BankSetup> {
               ),
             ),
             
-            // Treść
             Expanded(
               child: Center(
                 child: Padding(
@@ -206,19 +272,25 @@ class _OwnerStep3BankSetupState extends State<OwnerStep3BankSetup> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.account_balance_wallet, size: 80, color: Color(0xFF007AFF)),
+                      Icon(
+                        _isOnboardingStarted ? Icons.hourglass_top : Icons.account_balance_wallet, 
+                        size: 80, 
+                        color: const Color(0xFF007AFF)
+                      ),
                       const SizedBox(height: 20),
                       
-                      const Text(
-                        "Skonfiguruj wypłaty",
-                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                      Text(
+                        _isOnboardingStarted ? "Weryfikacja w toku..." : "Skonfiguruj wypłaty",
+                        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 10),
-                      const Text(
-                        "Zostaniesz przeniesiony na bezpieczną stronę Stripe, aby podać dane bankowe i zweryfikować tożsamość.",
+                      Text(
+                        _isOnboardingStarted 
+                          ? "Wypełnij dane na stronie Stripe, a następnie wróć tutaj. Aplikacja automatycznie sprawdzi status."
+                          : "Zostaniesz przeniesiony na bezpieczną stronę Stripe, aby podać dane bankowe.",
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey, fontSize: 16),
+                        style: const TextStyle(color: Colors.grey, fontSize: 16),
                       ),
                       
                       const SizedBox(height: 20),
@@ -229,21 +301,59 @@ class _OwnerStep3BankSetupState extends State<OwnerStep3BankSetup> {
               ),
             ),
 
-            // Guzik
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
               child: SizedBox(
                 width: double.infinity,
                 height: 55,
                 child: _isOnboardingStarted
-                  ? ElevatedButton(
-                      onPressed: _finish,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green, 
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: const Text("GOTOWE - ZAKOŃCZ REJESTRACJĘ", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch, // <--- 1. To wymusza rozciągnięcie do wysokości rodzica (55)
+                      children: [
+                        // Guzik 1: Powrót do Stripe
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _isLoading ? null : _startStripeOnboarding,
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Colors.grey),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              // minimumSize nie jest już konieczne przy CrossAxisAlignment.stretch, 
+                              // ale można zostawić dla pewności:
+                              minimumSize: const Size(0, 55), 
+                            ),
+                            child: const Text("Otwórz Stripe ponownie", 
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.black87, fontSize: 12)
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        
+                        // Guzik 2: Ręczne sprawdzenie
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : () => _verifyStripeStatusAndFinish(silent: false),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF007AFF), 
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              // 2. DODANO TO SAMO CO W PIERWSZYM GUZIKU:
+                              minimumSize: const Size(0, 55), 
+                            ),
+                            child: _isLoading 
+                              ? const SizedBox(
+                                  height: 20, 
+                                  width: 20, 
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                                )
+                              : const Text("SPRAWDŹ STATUS", 
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)
+                                ),
+                          ),
+                        ),
+                      ],
                     )
+                  // Stan początkowy (Jeden duży guzik)
                   : ElevatedButton.icon(
                       onPressed: _isLoading ? null : _startStripeOnboarding,
                       icon: const Icon(Icons.open_in_new, color: Colors.white),

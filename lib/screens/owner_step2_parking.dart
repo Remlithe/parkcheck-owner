@@ -66,8 +66,14 @@ class _OwnerStep2ParkingState extends State<OwnerStep2Parking> {
 
   @override
   Widget build(BuildContext context) {
+    // Pobieramy wysokość klawiatury
+    final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
+
     return Scaffold(
       backgroundColor: Colors.white,
+      // 1. ZMIANA: Blokujemy przesuwanie layoutu przez klawiaturę
+      resizeToAvoidBottomInset: false,
+      
       appBar: AppBar(
         title: const Text("Dodaj Parking", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
         centerTitle: true,
@@ -78,7 +84,7 @@ class _OwnerStep2ParkingState extends State<OwnerStep2Parking> {
       body: SafeArea(
         child: Column(
           children: [
-            // --- PASEK POSTĘPU (IDENTYCZNY JAK W STEP 1) ---
+            // --- PASEK POSTĘPU ---
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Column(
@@ -100,7 +106,13 @@ class _OwnerStep2ParkingState extends State<OwnerStep2Parking> {
 
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24.0),
+                // 2. ZMIANA: Dodajemy padding dynamiczny na dole listy inputów
+                padding: EdgeInsets.only(
+                  left: 24.0, 
+                  right: 24.0, 
+                  top: 24.0, 
+                  bottom: bottomPadding + 24.0 // Klawiatura + margines
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -166,6 +178,7 @@ class _OwnerStep2ParkingState extends State<OwnerStep2Parking> {
               ),
             ),
 
+            // Przycisk jest POZA SingleChildScrollView -> Sztywno na dole
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: SizedBox(
@@ -187,7 +200,7 @@ class _OwnerStep2ParkingState extends State<OwnerStep2Parking> {
     );
   }
 
-  // Helper Input (Wzorowany na Step 1)
+  // Helper Input
   Widget _buildInput(TextEditingController ctrl, String label, IconData icon, {TextInputType? type}) {
     return TextField(
       controller: ctrl,

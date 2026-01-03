@@ -5,7 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// --- SZABLON (Bez zmian) ---
+// --- SZABLON (POPRAWIONY) ---
 class BaseOwnerEditScreen extends StatelessWidget {
   final String title;
   final Widget body;
@@ -15,27 +15,55 @@ class BaseOwnerEditScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Pobieramy wysokość klawiatury
+    final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
+
     return Scaffold(
       backgroundColor: Colors.grey[50],
+      // 1. To sprawia, że guzik na dole nie "skacze" nad klawiaturę
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: Text(title, style: const TextStyle(color: Colors.black)),
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
+      // 2. SafeArea chroni przed nachodzeniem na dolny pasek (navbar) iPhone'a/Androida
+      body: SafeArea(
         child: Column(
           children: [
-            Expanded(child: SingleChildScrollView(child: body)),
+            Expanded(
+              child: SingleChildScrollView(
+                // 3. Dodajemy padding wewnątrz listy, żeby można było przewinąć treść
+                // nad klawiaturę, mimo że guzik i scaffold się nie ruszają.
+                padding: EdgeInsets.only(
+                  left: 20.0,
+                  right: 20.0,
+                  top: 20.0,
+                  bottom: bottomPadding + 20.0, // Klawiatura + margines
+                ),
+                child: body,
+              ),
+            ),
+            
+            // Guzik jest poza ScrollView, więc zawsze "siedzi" na samym dole
             if (onSave != null)
-              SizedBox(
+              Container(
                 width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: onSave,
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
-                  child: const Text("ZAPISZ"),
+                padding: const EdgeInsets.all(20.0), // Margines wokół guzika
+                decoration: BoxDecoration(
+                  color: Colors.grey[50], // Kolor tła pod guzikiem
+                ),
+                child: SizedBox(
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: onSave,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue, 
+                      foregroundColor: Colors.white
+                    ),
+                    child: const Text("ZAPISZ"),
+                  ),
                 ),
               ),
           ],
@@ -45,7 +73,7 @@ class BaseOwnerEditScreen extends StatelessWidget {
   }
 }
 
-// 1. DANE OSOBOWE (Z Emailem!)
+// 1. DANE OSOBOWE (Z Emailem!) - BEZ ZMIAN W LOGICE
 class OwnerPersonalDataScreen extends StatefulWidget {
   const OwnerPersonalDataScreen({super.key});
   @override
@@ -56,7 +84,7 @@ class _OwnerPersonalDataScreenState extends State<OwnerPersonalDataScreen> {
   final _firstNameCtrl = TextEditingController();
   final _lastNameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
-  final _emailCtrl = TextEditingController(); // <--- Kontroler Emaila
+  final _emailCtrl = TextEditingController(); 
   final User? user = FirebaseAuth.instance.currentUser;
 
   @override
@@ -73,7 +101,7 @@ class _OwnerPersonalDataScreenState extends State<OwnerPersonalDataScreen> {
         _firstNameCtrl.text = data['firstName'] ?? '';
         _lastNameCtrl.text = data['lastName'] ?? '';
         _phoneCtrl.text = data['phoneNumber'] ?? '';
-        _emailCtrl.text = data['email'] ?? user?.email ?? ''; // <--- Ładujemy email
+        _emailCtrl.text = data['email'] ?? user?.email ?? ''; 
       });
     }
   }
@@ -103,10 +131,9 @@ class _OwnerPersonalDataScreenState extends State<OwnerPersonalDataScreen> {
           const SizedBox(height: 15),
           TextField(controller: _phoneCtrl, decoration: const InputDecoration(labelText: "Telefon", border: OutlineInputBorder()), keyboardType: TextInputType.phone),
           const SizedBox(height: 15),
-          // --- POLE EMAIL (Tylko do odczytu) ---
           TextField(
             controller: _emailCtrl,
-            enabled: false, // Zablokowane (read-only)
+            enabled: false, 
             decoration: const InputDecoration(
               labelText: "Email (Login)", 
               border: OutlineInputBorder(),
@@ -120,7 +147,7 @@ class _OwnerPersonalDataScreenState extends State<OwnerPersonalDataScreen> {
   }
 }
 
-// 2. ZGŁOŚ PROBLEM (Bez zmian)
+// 2. ZGŁOŚ PROBLEM - BEZ ZMIAN W LOGICE
 class OwnerReportScreen extends StatefulWidget {
   const OwnerReportScreen({super.key});
   @override
@@ -156,7 +183,7 @@ class _OwnerReportScreenState extends State<OwnerReportScreen> {
   }
 }
 
-// 3. NOWOŚĆ: DANE KONTA BANKOWEGO
+// 3. DANE KONTA BANKOWEGO - BEZ ZMIAN W LOGICE
 class OwnerBankDataScreen extends StatefulWidget {
   const OwnerBankDataScreen({super.key});
 
@@ -208,7 +235,6 @@ class _OwnerBankDataScreenState extends State<OwnerBankDataScreen> {
 
     return BaseOwnerEditScreen(
       title: "Konto Bankowe (Stripe)",
-      // Brak przycisku Zapisz, bo to dane tylko do podglądu (edycja przez proces Stripe)
       body: FutureBuilder<DocumentSnapshot>(
         future: FirebaseFirestore.instance.collection('owners').doc(uid).get(),
         builder: (context, snapshot) {

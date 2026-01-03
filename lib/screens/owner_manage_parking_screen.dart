@@ -80,7 +80,7 @@ class _OwnerManageParkingScreenState extends State<OwnerManageParkingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFF007AFF),
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text("Dodaj Parking", style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.white,

@@ -1,8 +1,7 @@
-// lib/screens/owner_login_screen.dart
 import 'package:flutter/material.dart';
 import '../services/owner_auth_service.dart';
 import 'owner_step1_personal.dart';
-import 'owner_main_screen.dart'; // <--- 1. DODANO IMPORT
+import 'owner_main_screen.dart';
 
 class OwnerLoginScreen extends StatefulWidget {
   const OwnerLoginScreen({super.key});
@@ -28,17 +27,15 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Logowanie w Firebase
       await _authService.signInOwner(
         _emailCtrl.text.trim(),
         _passCtrl.text.trim(),
       );
 
-      // <--- 2. ZMIANA: Ręczne przekierowanie do EKRANU Z NAVBAREM
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const OwnerMainScreen()),
-          (route) => false, // Usuwa historię (nie można cofnąć do logowania)
+          (route) => false,
         );
       }
       
@@ -68,8 +65,14 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Pobieramy wysokość klawiatury
+    final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
+
     return Scaffold(
       backgroundColor: Colors.white,
+      // 1. ZMIANA: To blokuje przesuwanie guzika do góry przez klawiaturę
+      resizeToAvoidBottomInset: false, 
+      
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -80,7 +83,14 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
           children: [
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24.0),
+                // 2. ZMIANA: Dodajemy padding dynamiczny, żeby móc przewinąć treść
+                // nad klawiaturę (bo Scaffold się nie kurczy).
+                padding: EdgeInsets.only(
+                  left: 24.0, 
+                  right: 24.0, 
+                  top: 24.0, 
+                  bottom: bottomPadding + 24.0 // Klawiatura + margines
+                ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -107,7 +117,6 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
                     
                     const SizedBox(height: 30),
 
-                    // Link do rejestracji
                     TextButton(
                       onPressed: _goToRegistration,
                       child: RichText(
@@ -132,7 +141,7 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
               ),
             ),
             
-            // Przycisk Logowania na dole
+            // Przycisk jest POZA SingleChildScrollView, więc siedzi sztywno na dole
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: SizedBox(

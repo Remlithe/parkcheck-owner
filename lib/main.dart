@@ -4,7 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'screens/owner_login_screen.dart';
-import 'screens/owner_home_screen.dart';
 import 'screens/owner_main_screen.dart';
 void main() async {
   // 1. Obowiązkowa inicjalizacja silnika przed Firebase

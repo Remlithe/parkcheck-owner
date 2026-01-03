@@ -213,7 +213,7 @@ class _OwnerStep1PersonalState extends State<OwnerStep1Personal> {
                       ),
                       const SizedBox(height: 16),
                       
-                      _buildInput(_lastNameCtrl, "Nazwisko", Icons.person_outline, 
+                      _buildInput(_lastNameCtrl, "Nazwisko", Icons.person, 
                         errorText: _lastNameError,
                         focusNode: _lastNameFocus,
                         nextFocus: _emailFocus
@@ -246,7 +246,7 @@ class _OwnerStep1PersonalState extends State<OwnerStep1Personal> {
                       ),
                       const SizedBox(height: 16),
                       
-                      _buildInput(_confirmPassCtrl, "Powtórz hasło", Icons.lock_outline, 
+                      _buildInput(_confirmPassCtrl, "Powtórz hasło", Icons.lock, 
                         isObscure: true,
                         errorText: _confirmPassError,
                         focusNode: _confirmFocus,

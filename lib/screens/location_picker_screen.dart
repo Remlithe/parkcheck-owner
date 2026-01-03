@@ -15,43 +15,34 @@ class LocationPickerScreen extends StatefulWidget {
 class _LocationPickerScreenState extends State<LocationPickerScreen> {
   static const LatLng _initialPosition = LatLng(52.2297, 21.0122);
   
-  late GoogleMapController _mapController;
-  LatLng _pickedLocation = _initialPosition;
+  // Kontroler jest nullable, żeby uniknąć błędów LateInitializationError
+  GoogleMapController? _mapController;
   
+  LatLng _pickedLocation = _initialPosition;
   final TextEditingController _addressController = TextEditingController();
   
   bool _isLoadingAddress = false;
   bool _isDragging = false;
-  
-  // Czy użytkownik jest w trybie wpisywania (zanim kliknie Szukaj)?
   bool _isSearchMode = true; 
-
-  // NOWOŚĆ: Czy użytkownik już zaczął interakcję? (Na początku brak pina)
   bool _hasInteracted = false; 
-
-  @override
-  void initState() {
-    super.initState();
-    // USUNIĘTE: Nie pobieramy adresu na starcie.
-    // _getAddressFromLatLng(_pickedLocation);
-  }
 
   @override
   void dispose() {
     _addressController.dispose();
+    _mapController?.dispose();
     super.dispose();
   }
 
   // --- LOGIKA ADRESOWANIA ---
-
   Future<void> _getAddressFromLatLng(LatLng position) async {
-    // Jeśli to pierwsze użycie, uznajemy że interakcja nastąpiła
     if (!_hasInteracted) return;
 
-    setState(() {
-      _isLoadingAddress = true;
-      _isSearchMode = false;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoadingAddress = true;
+        _isSearchMode = false;
+      });
+    }
 
     try {
       List<Placemark> placemarks = await placemarkFromCoordinates(
@@ -84,14 +75,12 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   }
 
   // --- LOGIKA SZUKANIA ---
-
   Future<void> _searchPlace() async {
     String query = _addressController.text.trim();
     if (query.isEmpty) return;
 
-    FocusScope.of(context).unfocus();
+    FocusScope.of(context).unfocus(); 
     
-    // Aktywujemy pina przy wyszukiwaniu
     setState(() {
       _isLoadingAddress = true;
       _hasInteracted = true; 
@@ -103,7 +92,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
         Location loc = locations.first;
         LatLng newPos = LatLng(loc.latitude, loc.longitude);
 
-        _mapController.animateCamera(CameraUpdate.newLatLngZoom(newPos, 18.0));
+        _mapController?.animateCamera(CameraUpdate.newLatLngZoom(newPos, 18.0));
         
         setState(() {
           _pickedLocation = newPos;
@@ -111,39 +100,58 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           _isLoadingAddress = false;
         });
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Nie znaleziono adresu")));
-        setState(() => _isLoadingAddress = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Nie znaleziono adresu")));
+          setState(() => _isLoadingAddress = false);
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Błąd wyszukiwania")));
-      setState(() => _isLoadingAddress = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Błąd wyszukiwania")));
+        setState(() => _isLoadingAddress = false);
+      }
     }
   }
 
   // --- LOGIKA GPS ---
-  
   Future<void> _goToMyLocation() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Włącz GPS")));
-      return;
+    try {
+      // 1. Sprawdzamy czy usługi są włączone
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Włącz GPS w telefonie")));
+        return;
+      }
+
+      // 2. Sprawdzamy uprawnienia (To tutaj wcześniej wywalało błąd bez AndroidManifest)
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Brak uprawnień GPS")));
+          return;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Uprawnienia GPS trwale zablokowane")));
+        return;
+      }
+
+      // 3. Pobieramy pozycję
+      Position position = await Geolocator.getCurrentPosition();
+      LatLng myPos = LatLng(position.latitude, position.longitude);
+
+      if (!mounted) return;
+
+      setState(() => _hasInteracted = true);
+
+      // 4. Bezpieczne przesunięcie kamery
+      if (_mapController != null) {
+        _mapController!.animateCamera(CameraUpdate.newLatLngZoom(myPos, 18.0));
+      }
+    } catch (e) {
+      print("Błąd GPS: $e");
     }
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
-    }
-    
-    if (permission == LocationPermission.deniedForever) return;
-
-    // Aktywujemy pina przy kliknięciu lokalizacji
-    setState(() => _hasInteracted = true);
-
-    Position position = await Geolocator.getCurrentPosition();
-    LatLng myPos = LatLng(position.latitude, position.longitude);
-
-    _mapController.animateCamera(CameraUpdate.newLatLngZoom(myPos, 18.0));
   }
 
   void _confirmSelection() {
@@ -155,10 +163,18 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const double pinHeight = 50.0; 
+    const double pinHeight = 50.0;
     
+    // 1. Wysokość klawiatury
+    final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    // 2. Wysokość systemowego paska nawigacji (tego na dole ekranu)
+    final double safeAreaBottom = MediaQuery.of(context).padding.bottom;
+
+    // Suma odstępów: Klawiatura + Pasek Systemowy + Nasz Margines (20)
+    final double bottomPosition = keyboardHeight + safeAreaBottom + 20;
+
     return Scaffold(
-      resizeToAvoidBottomInset: true, 
+      resizeToAvoidBottomInset: false, // Mapa się nie skaluje
       body: Stack(
         children: [
           // 1. MAPA
@@ -167,8 +183,13 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
               target: _initialPosition,
               zoom: 15,
             ),
-            onMapCreated: (controller) => _mapController = controller,
-            // START PRZESUWANIA = POJAWIENIE SIĘ PINA
+            onMapCreated: (controller) {
+              _mapController = controller;
+            },
+            myLocationEnabled: true, 
+            myLocationButtonEnabled: false, 
+            padding: EdgeInsets.zero, // Mapa na pełen ekran
+            
             onCameraMoveStarted: () {
               setState(() {
                 _isDragging = true;
@@ -185,8 +206,6 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
               }
             },
             zoomControlsEnabled: false,
-            myLocationButtonEnabled: false, 
-            padding: EdgeInsets.zero, 
           ),
 
           // 2. PRZYCISK WSTECZ
@@ -202,21 +221,20 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             ),
           ),
 
-          // 3. CELOWNIK (POKAZUJ TYLKO JEŚLI _hasInteracted)
+          // 3. CELOWNIK
           if (_hasInteracted)
             Center(
               child: Container(
                 width: 8, 
                 height: 8,
                 decoration: BoxDecoration(
-                  // Przezroczysta czarna, bez ramki
                   color: Colors.black.withOpacity(0.5), 
                   shape: BoxShape.circle,
                 ),
               ),
             ),
 
-          // 4. PIN (POKAZUJ TYLKO JEŚLI _hasInteracted)
+          // 4. PIN
           if (_hasInteracted)
             Center(
               child: AnimatedPadding(
@@ -233,9 +251,12 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             ),
 
           // 5. PRZYCISK LOKALIZACJI
-          Positioned(
+          // Przesuwa się w górę razem z dolnym panelem
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 100),
             right: 20,
-            bottom: 240, 
+            // Lokalizacja jest zawsze 220px nad dolnym panelem
+            bottom: bottomPosition + 220, 
             child: FloatingActionButton(
               onPressed: _goToMyLocation,
               backgroundColor: Colors.white,
@@ -243,11 +264,16 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             ),
           ),
 
-          // 6. DOLNY PANEL
-          Align(
-            alignment: Alignment.bottomCenter,
+          // 6. DOLNY PANEL (ADRES I PRZYCISK)
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 100),
+            left: 20,
+            right: 20,
+            // To naprawia problem: Jest nad systemowym navbar (safeAreaBottom)
+            // I nad klawiaturą (keyboardHeight)
+            bottom: bottomPosition, 
+            
             child: Container(
-              margin: const EdgeInsets.all(20.0),
               padding: const EdgeInsets.all(20.0),
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -257,7 +283,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                 ],
               ),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisSize: MainAxisSize.min, // Zajmuje tylko tyle miejsca ile potrzebuje
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Container(
@@ -270,7 +296,6 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                       textInputAction: TextInputAction.search,
                       onSubmitted: (_) => _searchPlace(),
                       onChanged: (text) {
-                        // Jeśli piszemy, to znaczy że szukamy
                         if (!_isSearchMode && text.isNotEmpty) {
                           setState(() => _isSearchMode = true);
                         }
@@ -292,7 +317,6 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                       onPressed: () {
                          if (_isLoadingAddress) return;
                          
-                         // Jeśli jeszcze nie ma pina (start), a input jest pusty -> nic nie rób albo pokaż komunikat
                          if (!_hasInteracted && _addressController.text.isEmpty) {
                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Wpisz adres lub przesuń mapę")));
                            return;
@@ -302,6 +326,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                            _searchPlace();
                          } else {
                            _confirmSelection();
+                           // Reset klawiatury po wyborze
+                           FocusScope.of(context).unfocus(); 
                          }
                       },
                       style: ElevatedButton.styleFrom(
@@ -312,7 +338,6 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                       child: _isLoadingAddress 
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                         : Text(
-                            // Tekst na przycisku zmienia się w zależności od stanu
                             (!_hasInteracted || _isSearchMode) ? "Szukaj" : "Wybierz adres",
                             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)
                           ),

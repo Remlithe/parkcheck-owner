@@ -34,6 +34,81 @@ class _OwnerParkedScreenState extends State<OwnerParkedScreen> {
       _finalizeSettlement(sessionId, parkingId);
     }
   }
+  // --- DEBUG: Ręczne dodawanie auta (NAPRAWIONE) ---
+  void _debugAddTestCar() async {
+    if (_selectedParkingId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Najpierw wybierz parking z listy!")),
+      );
+      return;
+    }
+
+    final String parkingId = _selectedParkingId!;
+    final String ownerUid = FirebaseAuth.instance.currentUser!.uid;
+    
+    try {
+      final firestore = FirebaseFirestore.instance;
+      
+      // 1. NAJPIERW LICZYMY FAKTYCZNE SESJE (omijamy zepsuty licznik 8/5)
+      final activeSessionsQuery = await firestore
+          .collection('parking_sessions')
+          .where('parkingId', isEqualTo: parkingId)
+          .where('status', isEqualTo: 'active')
+          .get();
+      
+      final int realCount = activeSessionsQuery.docs.length; // To zwróci 0 (lub ile faktycznie jest)
+
+      // 2. Pobieramy dane parkingu, żeby znać limit
+      final parkingRef = firestore.collection('parking_spots').doc(parkingId);
+      final parkingSnapshot = await parkingRef.get(); // Pobieramy bez transakcji dla odczytu limitu
+      
+      if (!parkingSnapshot.exists) throw Exception("Parking nie istnieje");
+      
+      final data = parkingSnapshot.data() as Map<String, dynamic>;
+      int maxCap = data['totalCapacity'] ?? 5;
+      String parkingName = data['name'] ?? "Parking";
+
+      // 3. Sprawdzamy limit na podstawie PRAWDZIWEJ liczby
+      if (realCount >= maxCap) {
+         throw Exception("Parking jest już pełny ($realCount/$maxCap)!");
+      }
+
+      // 4. Wykonujemy transakcję dodania
+      final sessionRef = firestore.collection('parking_sessions').doc();
+
+      await firestore.runTransaction((transaction) async {
+        // Tu aktualizujemy licznik na 'realCount + 1'.
+        // DZIĘKI TEMU NAPRAWIMY BŁĄD W BAZIE! (Zmieni 8 na 1)
+        transaction.update(parkingRef, {
+          'occupiedSpots': realCount + 1
+        });
+
+        transaction.set(sessionRef, {
+          'parkingId': parkingId,
+          'parkingName': parkingName,
+          'ownerId': ownerUid,
+          'driverId': 'TEST_BOT_${DateTime.now().millisecondsSinceEpoch}', 
+          'licensePlate': 'TEST-BOT',
+          'startTime': FieldValue.serverTimestamp(),
+          'status': 'active',
+          'cost': 0.0,
+          'paid': false,
+        });
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("DEBUG: Dodano +1 auto (i naprawiono licznik)"),
+          duration: Duration(milliseconds: 800),
+        ),
+      );
+    } catch (e) {
+      String msg = e.toString().replaceAll("Exception: ", "");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: Colors.red),
+      );
+    }
+  }
 
   void _showPaymentWarningDialog(String sessionId, String parkingId, String? errorMsg) {
     showDialog(
@@ -149,6 +224,14 @@ class _OwnerParkedScreenState extends State<OwnerParkedScreen> {
         elevation: 0,
         automaticallyImplyLeading: false,
       ),
+      floatingActionButton: _selectedParkingId != null 
+          ? FloatingActionButton.extended(
+              onPressed: _debugAddTestCar,
+              backgroundColor: Colors.redAccent,
+              icon: const Icon(Icons.add_circle_outline, color: Colors.white),
+              label: const Text("DEBUG +1", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            )
+          : null,
       body: Column(
         children: [
           // PANEL STEROWANIA
